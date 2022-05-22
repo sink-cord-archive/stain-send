@@ -157,12 +157,14 @@
 					statusSpan.innerText = "Could not connect";
 				else
 					statusSpan.innerText = res
-						.map(
-							([port, msg]) =>
-								`[${port}] ${msg?.status}${
-									msg?.message ? ": " + msg.message : ""
-								}`
-						)
+						.map(([port, msg]) => {
+							const resolvedMsg =
+								msg?.message?.message ?? msg?.message;
+							const niceMsg = resolvedMsg
+								? ": " + resolvedMsg
+								: "";
+							return `[${port}] ${msg?.status}${niceMsg}`;
+						})
 						.join("\n");
 			})();
 		</script>
