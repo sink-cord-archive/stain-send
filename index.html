@@ -66,21 +66,90 @@
 </main>
 
 <script>
+	// DOM CODE
 	const urlInput = document.getElementById("url");
 	const statusSpan = document.getElementById("status");
 
 	const resetSoon = () => setTimeout(() => (statusSpan.innerText = ""), 5000);
 
+	// GENERATION CODE
 	function gen(prepend) {
 		const url = new URL(location.href);
 		url.hash = prepend + urlInput.value;
 		navigator.clipboard.writeText(url.href);
 		statusSpan.innerText = "Copied URL to clipboard!";
-		resetSoon()
+		resetSoon();
 	}
 
-	window.genTheme = () => gen("T_")
-	window.genRepo = () => gen("R_")
+	window.genTheme = () => gen("T_");
+	window.genRepo = () => gen("R_");
+
+	// WEBSOCKET CODE
+	let lastId = 0;
+	const getId = () => lastId++;
+
+	const promisifyWsWithTimeout = (ws, id) => new Promise((res, rej) => {
+		ws.onmessage = (ev) => {
+			try {
+				const parsed = JSON.parse(ev.data);
+				if (parsed?.uuid !== id) return;
+				res(parsed);
+			} catch {
+			}
+		};
+		setTimeout(rej, 5000);
+	});
+
+	async function sendToDiscord(msg) {
+		const promises = [];
+		for (let i = 6463; i <= 6473; i++) {
+			// noinspection SpellCheckingInspection
+			const ws = new WebSocket("ws://127.0.0.1:" + i + "/cumcord");
+			const newMsg = {...msg, uuid: getId()};
+			// noinspection JSCheckFunctionSignatures
+			ws.onopen = () => {
+				ws.send(JSON.stringify(newMsg));
+				promises.push(promisifyWsWithTimeout(ws, newMsg.uuid).then(r => [i, r]))
+			};
+		}
+
+		// give the WS time
+		await new Promise((res) => {
+			const clear = setInterval(() => {
+				if (promises.length > 0) {
+					setTimeout(res, 500);
+					clearInterval(clear);
+				}
+			}, 100);
+			setTimeout(() => {
+				clearInterval(clear);
+				res();
+			}, 5000);
+		})
+
+		return await Promise.all(promises);
+	}
+
+	// SENDING CODE
+	// iife go BRRR, yes i could just have used type="module" -- sink
+	(async () => {
+		const isTheme = location.hash.startsWith("#T");
+		if (!isTheme && !location.hash.startsWith("#R")) return;
+
+		document.querySelectorAll("button, br").forEach(e => e.remove());
+		urlInput.remove();
+
+		statusSpan.innerText = "Talking to Cumcord, please wait..."
+
+		const msg = {
+			action: `ysink_stain_add${isTheme ? "theme" : "repo"}`,
+			url: isTheme && location.hash.slice(2),
+			repo: !isTheme && location.hash.slice(2)
+		}
+
+		const res = await sendToDiscord(msg);
+		statusSpan.innerText = res.map(([port, msg]) => `[${port}] ${msg?.status}: ${msg?.message}`).join("\n");
+	})()
 </script>
 </body>
 </html>
