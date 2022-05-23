@@ -69,7 +69,9 @@
 			<button onclick="genRepo()">Generate (Repo)</button>
 		</main>
 
-		<script>
+		<script type="module">
+			import cummunicate from "https://cdn.esm.sh/@cumjar/cummunicate";
+
 			// DOM CODE
 			const urlInput = document.getElementById("url");
 			const statusSpan = document.getElementById("status");
@@ -89,85 +91,36 @@
 			window.genTheme = () => gen("T_");
 			window.genRepo = () => gen("R_");
 
-			// WEBSOCKET CODE
-			let lastId = 0;
-			const getId = () => lastId++;
-
-			const promisifyWsWithTimeout = (ws, id) =>
-				new Promise((res, rej) => {
-					ws.onmessage = (ev) => {
-						try {
-							const parsed = JSON.parse(ev.data);
-							if (
-								parsed?.uuid === id &&
-								parsed.name === "CUMCORD_WEBSOCKET"
-							)
-								res(parsed);
-						} catch {}
-					};
-					setTimeout(rej, 5000);
-				});
-
-			async function sendToDiscord(msg) {
-				const promises = [];
-				for (let i = 6463; i <= 6473; i++) {
-					const ws = new WebSocket(
-						"ws://127.0.0.1:" + i + "/cumcord"
-					);
-					const newMsg = { ...msg, uuid: getId() };
-					ws.onopen = () => {
-						ws.send(JSON.stringify(newMsg));
-						promises.push(
-							promisifyWsWithTimeout(ws, newMsg.uuid).then(
-								(r) => {
-									ws.close();
-									return [i, r];
-								}
-							)
-						);
-					};
-				}
-
-				// give the WS time
-				await new Promise((res) => setTimeout(res, 500));
-
-				return await Promise.all(promises);
-			}
-
 			// SENDING CODE
-			// iife go BRRR, yes i could just have used type="module" -- sink
-			(async () => {
-				const isTheme = location.hash.startsWith("#T");
-				if (!isTheme && !location.hash.startsWith("#R")) return;
-
+			const isTheme = location.hash.startsWith("#T");
+			if (isTheme || location.hash.startsWith("#R")) {
+				statusSpan.innerText = "Talking to Cumcord, please wait...";
 				document
 					.querySelectorAll("button, br")
 					.forEach((e) => e.remove());
 				urlInput.remove();
 
-				statusSpan.innerText = "Talking to Cumcord, please wait...";
+				const res = isTheme
+					? await cummunicate("ysink_stain_addtheme", {
+							url: location.hash.slice(3),
+					  })
+					: await cummunicate("ysink_stain_addrepo", {
+							repo: location.hash.slice(3),
+					  });
 
-				const msg = {
-					action: `ysink_stain_add${isTheme ? "theme" : "repo"}`,
-					url: isTheme && location.hash.slice(3),
-					repo: !isTheme && location.hash.slice(3),
-				};
+				function resToString([port, msg]) {
+					const resolvedMsg = msg?.message?.message ?? msg?.message;
 
-				const res = await sendToDiscord(msg);
-				if (res.length === 0)
-					statusSpan.innerText = "Could not connect";
-				else
-					statusSpan.innerText = res
-						.map(([port, msg]) => {
-							const resolvedMsg =
-								msg?.message?.message ?? msg?.message;
-							const niceMsg = resolvedMsg
-								? ": " + resolvedMsg
-								: "";
-							return `[${port}] ${msg?.status}${niceMsg}`;
-						})
-						.join("\n");
-			})();
+					const niceMsg = resolvedMsg ? ": " + resolvedMsg : "";
+
+					return `[${port}] ${msg?.status}${niceMsg}`;
+				}
+
+				statusSpan.innerText =
+					res.length === 0
+						? "Could not connect"
+						: res.map(resToString).join("\n");
+			}
 		</script>
 	</body>
 </html>
